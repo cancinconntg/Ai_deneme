@@ -2,7 +2,7 @@
   "name": "Telegram AFK Yanıt Botu",
   "description": "Telegram hesabınızdan DM, mention ve yanıtlara otomatik olarak AI destekli yanıtlar veren ve ayarları bir kontrol botu ile yapılan bot.",
   "repository": "https://github.com/xxxx/xxxx",
-  "logo": "https://img.icons8.com/?size=100&id=61164&format=png&color=000000", // Robot ikonu
+  "logo": "https://img.icons8.com/?size=100&id=61164&format=png&color=000000",
   "keywords": ["telegram", "pyrogram", "bot", "ai", "gemini", "heroku", "python", "afk"],
   "stack": "heroku-22",
   "env": {
