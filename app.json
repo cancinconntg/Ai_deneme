@@ -1,0 +1,51 @@
+{
+  "name": "Telegram Geçmiş Analiz Botu",
+  "description": "Pyrogram ve Gemini AI kullanarak Telegram sohbet geçmişlerini analiz eden ve özetleyen bir bot.",
+  "repository": "https://github.com/xxxx/xxxx",
+  "logo": "https://avatars.githubusercontent.com/u/1459478",
+  "keywords": ["telegram", "pyrogram", "bot", "ai", "gemini", "heroku", "python"],
+  "stack": "heroku-22",
+  "env": {
+    "ADMIN_ID": {
+      "description": "Botun komutlarını kullanabilecek Telegram kullanıcısının unique ID'si.",
+      "value": "",
+      "required": true
+    },
+    "TG_API_ID": {
+      "description": "my.telegram.org adresinden alınan API ID.",
+      "value": "",
+      "required": true
+    },
+    "TG_API_HASH": {
+      "description": "my.telegram.org adresinden alınan API Hash.",
+      "value": "",
+      "required": true
+    },
+    "TG_BOT_TOKEN": {
+      "description": "Telegram BotFather'dan alınan bot token'ı.",
+      "value": "",
+      "required": true
+    },
+    "AI_API_KEY": {
+      "description": "Google AI Studio (makersuite.google.com) üzerinden alınan Gemini API Anahtarı.",
+      "value": "",
+      "required": true
+    },
+    "TG_STRING_SESSION": {
+      "description": "Pyrogram kullanıcı botu için oluşturulan String Session. Bu olmadan kullanıcı botu çalışmaz.",
+      "value": "",
+      "required": true
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ],
+  "formation": {
+    "worker": {
+      "quantity": 1,
+      "size": "eco"
+    }
+  }
+}
