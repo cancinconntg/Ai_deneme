@@ -6,23 +6,13 @@ import os
 import traceback
 import logging
 from datetime import datetime
+import pytz
 
-# --- Gerekli Kütüphaneler ---
-# requirements.txt dosyanıza ekleyin:
-# pyrogram>=2.0.106,<3.0.0
-# TgCrypto>=1.2.5,<2.0.0  # ÖNEMLİ: Hız ve stabilite için
-# python-telegram-bot[persistence]>=21.0.1,<22.0.0
-# google-generativeai>=0.5.4
-# httpx>=0.24.1,<0.28.0
-# pytz>=2023.3
-
-# Pyrogram (Kullanıcı Botu için)
 from pyrogram import Client, filters, idle
 from pyrogram.types import Message
 from pyrogram.enums import ChatType, ParseMode as PyroParseMode
 from pyrogram.errors import UserNotParticipant, UserIsBlocked, PeerIdInvalid, ChannelInvalid, ChannelPrivate
 
-# python-telegram-bot (Kontrol Botu için)
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler, MessageHandler,
@@ -31,31 +21,24 @@ from telegram.ext import (
 from telegram.constants import ParseMode as TGParseMode
 from telegram.error import TelegramError
 
-# Google Gemini AI
 from google import generativeai as genai
-from google.api_core.exceptions import GoogleAPIError # Hata yakalama için
+from google.api_core.exceptions import GoogleAPIError
 
-# Diğerleri
-import pytz # Zaman dilimi için
-
-# --- Logging Ayarları ---
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
-# logging.getLogger("pyrogram").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-# --- Yapılandırma (Ortam Değişkenleri) ---
 logger.info("➡️ Ortam değişkenleri okunuyor...")
 try:
     ADMIN_ID = int(os.environ['ADMIN_ID'])
     TG_API_ID = int(os.environ['TG_API_ID'])
     TG_API_HASH = os.environ['TG_API_HASH']
-    TG_BOT_TOKEN = os.environ['TG_BOT_TOKEN'] # Kontrol botu token'ı
+    TG_BOT_TOKEN = os.environ['TG_BOT_TOKEN']
     AI_API_KEY = os.environ['AI_API_KEY']
-    TG_STRING_SESSION = os.environ['TG_STRING_SESSION'] # Userbot string session
+    TG_STRING_SESSION = os.environ['TG_STRING_SESSION']
     PERSISTENCE_FILE = os.getenv('PERSISTENCE_FILE', 'bot_persistence.pickle')
 
     try:
@@ -64,14 +47,13 @@ try:
     except ImportError:
         logger.warning("⚠️ TgCrypto bulunamadı! Pyrogram daha yavaş çalışacaktır. `pip install TgCrypto` ile kurun.")
 
-    logger.info("✅ Gerekli ortam değişkenleri başarıyla yüklendi.")
+    logger.info(f"✅ Gerekli ortam değişkenleri başarıyla yüklendi. ADMIN_ID: {ADMIN_ID}")
 except (KeyError, ValueError) as e:
     logger.critical(f"❌ Kritik Hata: Eksik veya geçersiz ortam değişkeni: {e}")
     exit(1)
 
-# --- Global Değişkenler ve Durum Yönetimi ---
 DEFAULT_SETTINGS = {
-    "is_listening": False, # Başlangıçta kapalı
+    "is_listening": False,
     "language": "tr",
     "prompt_config": {
         "age": 23,
@@ -81,11 +63,10 @@ DEFAULT_SETTINGS = {
         "can_insult": False,
         "custom_suffix": "- Afk Mesajı"
     },
-    "interacted_users": {}, # {user_id: {"name": "...", "link": "...", "type": "dm/mention/reply", "timestamp": ...}} - /off ile sıfırlanacak
+    "interacted_users": {},
     "ai_model": "gemini-1.5-flash"
 }
 
-# Dil Dosyası (İlgili kısımlar güncellendi)
 localization = {
     "tr": {
         "start_message": (
@@ -105,7 +86,6 @@ localization = {
         "back_button": " geri",
         "status_on": "AKTİF ✅",
         "status_off": "PASİF ❌",
-        # "toggle_listening": "Dinlemeyi Aç/Kapat", # Kaldırıldı
         "select_language_prompt": "Lütfen bir dil seçin:",
         "prompt_menu_title": "📝 Prompt Ayar Menüsü",
         "set_age": " Yaş Ayarla ({age})",
@@ -126,7 +106,7 @@ localization = {
         "list_title": "💬 Son Etkileşimler ( `/on` komutundan beri):",
         "list_empty": "ℹ️ `/on` komutundan beri kayıtlı etkileşim yok veya dinleme kapalı.",
         "list_format_dm": "<a href=\"tg://user?id={user_id}\">{name}</a> (Özel Mesaj)",
-        "list_format_group": "<a href=\"{link}\">{name}</a> ({type})", # type: mention/reply
+        "list_format_group": "<a href=\"{link}\">{name}</a> ({type})",
         "error_ai": "❌ AI yanıtı alınırken hata oluştu: {error}",
         "error_sending": "❌ Mesaj gönderilirken hata oluştu: {error}",
         "listening_started": "✅ Userbot dinleme modu AKTİF.",
@@ -141,7 +121,6 @@ localization = {
         "userbot_connected": "Bağlı ✅",
         "userbot_disconnected": "Bağlı Değil ❌",
         "userbot_error": "Hata ⚠️",
-        # Yeni Prompt Parçaları (Aynı kalabilir)
         "prompt_persona_base": "Senin görevin, şu anda bilgisayar başında olmayan bir Telegram kullanıcısının yerine geçen bir yapay zeka asistansın olmak. Aşağıdaki kişilik özelliklerine sahipmiş gibi davranmalısın:",
         "prompt_age_gender": "- {age} yaşında bir {gender}.",
         "prompt_jokes_on": "- Esprili ve eğlenceli bir üslup kullanırsın.",
@@ -157,7 +136,6 @@ localization = {
         "prompt_instruction": "\nBu mesaja, tanımlanan kişiliğe uygun, kısa ve öz bir şekilde yanıt ver. Şu anda AFK (klavye başında değil) olduğunu belirtmeyi unutma.",
     },
     "en": {
-         # ... (EN localization needs similar updates for /on, /off, /list, /ping commands and removal of toggle button) ...
         "start_message": (
             "🤖 Hello! AFK Reply Control Bot.\n\n"
             "Userbot Listening Status: `{status}`\n"
@@ -181,23 +159,17 @@ localization = {
         "userbot_connected": "Connected ✅",
         "userbot_disconnected": "Disconnected ❌",
         "userbot_error": "Error ⚠️",
-        # ... (Other EN texts should be reviewed) ...
+        # Diğer İngilizce metinler buraya eklenebilir...
     },
     "ru": {
-        # ... (RU localization needs similar updates) ...
+        # Rusça metinler buraya eklenebilir...
     }
 }
 
-
-# --- Yardımcı Fonksiyonlar ---
-
-# get_text, get_current_settings, save_settings fonksiyonları öncekiyle aynı kalabilir.
 def get_text(context: ContextTypes.DEFAULT_TYPE | None, key: str, lang: str = None, **kwargs) -> str:
-    """Yerelleştirilmiş metni alır. Context None ise lang belirtilmeli."""
     if lang is None:
         if context is None:
             effective_lang = DEFAULT_SETTINGS['language']
-            # logger.warning("get_text context olmadan ve lang belirtilmeden çağrıldı, varsayılan dil '%s' kullanılıyor.", effective_lang)
         else:
             settings = get_current_settings(context)
             effective_lang = settings.get('language', DEFAULT_SETTINGS['language'])
@@ -213,7 +185,6 @@ def get_text(context: ContextTypes.DEFAULT_TYPE | None, key: str, lang: str = No
              template = f"<{key}>"
 
     try:
-        # Eğer kwargs boşsa formatlamaya gerek yok
         return template.format(**kwargs) if kwargs else template
     except KeyError as e:
         logger.warning(f"Metin formatlamada eksik anahtar: {e} (anahtar: {key}, dil: {effective_lang})")
@@ -222,31 +193,23 @@ def get_text(context: ContextTypes.DEFAULT_TYPE | None, key: str, lang: str = No
         logger.error(f"Metin formatlamada beklenmedik hata: {e} (anahtar: {key}, dil: {effective_lang})", exc_info=True)
         return template
 
-
 def get_current_settings(context: ContextTypes.DEFAULT_TYPE) -> dict:
-    """Mevcut ayarları alır veya varsayılanları döndürür."""
     if 'settings' not in context.bot_data:
         logger.info("Persistence'ta ayar bulunamadı, varsayılan ayarlar yükleniyor.")
-        context.bot_data['settings'] = json.loads(json.dumps(DEFAULT_SETTINGS)) # Deep copy
+        context.bot_data['settings'] = json.loads(json.dumps(DEFAULT_SETTINGS))
     return context.bot_data['settings']
 
 async def save_settings(context: ContextTypes.DEFAULT_TYPE, settings: dict):
-    """Ayarları persistence'a kaydeder."""
     context.bot_data['settings'] = settings
     try:
         await context.application.persistence.flush()
-        # logger.info("Ayarlar persistence'a kaydedildi.") # Çok sık loglamamak için kapatılabilir
     except Exception as e:
         logger.error(f"Persistence flush sırasında hata: {e}")
 
-
 def get_status_text(context: ContextTypes.DEFAULT_TYPE, status: bool) -> str:
-    """Boolean durumu dile göre Açık/Kapalı metnine çevirir."""
     return get_text(context, "status_on") if status else get_text(context, "status_off")
 
-# generate_full_prompt öncekiyle aynı kalabilir.
 def generate_full_prompt(prompt_config: dict, lang: str, sender_name: str, interaction_type: str, message_text: str) -> str:
-    """Ayarlara ve mesaja göre tam AI prompt'unu oluşturur."""
     try:
         p_conf = prompt_config
         prompt_lines = [get_text(None, "prompt_persona_base", lang=lang)]
@@ -256,9 +219,9 @@ def generate_full_prompt(prompt_config: dict, lang: str, sender_name: str, inter
         prompt_lines.append(get_text(None, "prompt_insult_on", lang=lang) if p_conf.get('can_insult', False) else get_text(None, "prompt_insult_off", lang=lang))
 
         prompt_lines.append(get_text(None, "prompt_context_intro", lang=lang))
-        context_key = f"prompt_context_{interaction_type}" # dm, mention, reply
+        context_key = f"prompt_context_{interaction_type}"
         prompt_lines.append(get_text(None, context_key, lang=lang, sender_name=sender_name))
-        prompt_lines.append(f"```\n{message_text or '[Mesaj metni yok]'}\n```") # Gelen mesaj
+        prompt_lines.append(f"```\n{message_text or '[Mesaj metni yok]'}\n```")
 
         prompt_lines.append(get_text(None, "prompt_instruction", lang=lang))
 
@@ -268,19 +231,12 @@ def generate_full_prompt(prompt_config: dict, lang: str, sender_name: str, inter
         logger.error(f"Prompt oluşturulurken hata oluştu: {e}", exc_info=True)
         return get_text(None, "prompt_generation_error", lang=lang) + f"\n\nLütfen '{sender_name}' tarafından gönderilen şu mesaja AFK olduğunuzu belirterek yanıt verin: {message_text}"
 
-
-# --- Klavye Oluşturma Yardımcı Fonksiyonları ---
-
-# Ana menüde artık Aç/Kapat butonu yok
 def _generate_main_menu_keyboard(context: ContextTypes.DEFAULT_TYPE) -> list[list[InlineKeyboardButton]]:
-    # settings = get_current_settings(context) # Ayarlara gerek yok
     return [
-        # [InlineKeyboardButton(get_text(context, "toggle_listening"), callback_data='toggle_listening')], # Kaldırıldı
         [InlineKeyboardButton(get_text(context, "language_select"), callback_data='select_language')],
         [InlineKeyboardButton(get_text(context, "prompt_settings"), callback_data='prompt_settings')],
     ]
 
-# Prompt ayarları menüsü aynı kalabilir
 def _generate_prompt_settings_keyboard(context: ContextTypes.DEFAULT_TYPE) -> list[list[InlineKeyboardButton]]:
     settings = get_current_settings(context)
     prompt_config = settings.get('prompt_config', DEFAULT_SETTINGS['prompt_config'])
@@ -302,11 +258,11 @@ def _generate_prompt_settings_keyboard(context: ContextTypes.DEFAULT_TYPE) -> li
         [InlineKeyboardButton(f"🔙{get_text(context, 'back_button')}", callback_data='main_menu')],
     ]
 
-# --- PTB Komut İşleyicileri ---
-
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/start komutu - Hoşgeldin mesajı ve durumu gösterir."""
-    if update.effective_user.id != ADMIN_ID:
+    user_id = update.effective_user.id
+    logger.info(f"Received command '/start' from user ID {user_id}. Comparing with ADMIN_ID {ADMIN_ID}.")
+    if user_id != ADMIN_ID:
+        logger.warning(f"Unauthorized access attempt for /start by user ID {user_id}.")
         await update.message.reply_text("⛔ Bu botu sadece sahibi kullanabilir.")
         return
 
@@ -318,10 +274,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/settings komutu - Ayarlar menüsünü açar."""
-    if update.effective_user.id != ADMIN_ID: return # Sadece admin
+    user_id = update.effective_user.id
+    logger.info(f"Received command '/settings' from user ID {user_id}. Comparing with ADMIN_ID {ADMIN_ID}.")
+    if user_id != ADMIN_ID:
+        logger.warning(f"Unauthorized access attempt for /settings by user ID {user_id}.")
+        return
 
-    # Ayarlar menüsünü yeni bir mesajla gönder
     keyboard = _generate_main_menu_keyboard(context)
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
@@ -330,14 +288,15 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     )
 
 async def on_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/on komutu - Userbot dinlemesini başlatır."""
-    if update.effective_user.id != ADMIN_ID: return
+    user_id = update.effective_user.id
+    logger.info(f"Received command '/on' from user ID {user_id}. Comparing with ADMIN_ID {ADMIN_ID}.")
+    if user_id != ADMIN_ID:
+        logger.warning(f"Unauthorized access attempt for /on by user ID {user_id}.")
+        return
 
     settings = get_current_settings(context)
     if not settings.get('is_listening', False):
         settings['is_listening'] = True
-        # /on komutu listeyi SIFIRLAMAZ, sadece başlatır.
-        # settings['interacted_users'] = {} # Sıfırlama /off'ta
         await save_settings(context, settings)
         await update.message.reply_text(get_text(context, "listening_started"))
         logger.info(f"Userbot dinleme modu /on komutuyla AKTİF edildi (Admin: {ADMIN_ID}).")
@@ -345,19 +304,20 @@ async def on_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text(get_text(context, "already_listening"))
 
 async def off_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/off komutu - Userbot dinlemesini durdurur ve listeyi sıfırlar."""
-    if update.effective_user.id != ADMIN_ID: return
+    user_id = update.effective_user.id
+    logger.info(f"Received command '/off' from user ID {user_id}. Comparing with ADMIN_ID {ADMIN_ID}.")
+    if user_id != ADMIN_ID:
+        logger.warning(f"Unauthorized access attempt for /off by user ID {user_id}.")
+        return
 
     settings = get_current_settings(context)
     if settings.get('is_listening', False):
         settings['is_listening'] = False
-        settings['interacted_users'] = {} # Etkileşim listesini sıfırla
+        settings['interacted_users'] = {}
         await save_settings(context, settings)
         await update.message.reply_text(get_text(context, "listening_stopped"))
         logger.info(f"Userbot dinleme modu /off komutuyla DEVRE DIŞI bırakıldı ve liste sıfırlandı (Admin: {ADMIN_ID}).")
     else:
-        # Liste zaten sıfırlanmış olabilir veya önceki session'dan kalmış olabilir.
-        # Her ihtimale karşı burada da sıfırlayalım.
         if 'interacted_users' in settings and settings['interacted_users']:
              settings['interacted_users'] = {}
              await save_settings(context, settings)
@@ -365,18 +325,20 @@ async def off_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text(get_text(context, "already_stopped"))
 
 async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/list komutu - Son etkileşimleri listeler."""
-    if update.effective_user.id != ADMIN_ID: return
+    user_id = update.effective_user.id
+    logger.info(f"Received command '/list' from user ID {user_id}. Comparing with ADMIN_ID {ADMIN_ID}.")
+    if user_id != ADMIN_ID:
+        logger.warning(f"Unauthorized access attempt for /list by user ID {user_id}.")
+        return
 
     settings = get_current_settings(context)
     interacted = settings.get('interacted_users', {})
     lang = settings.get('language', 'tr')
 
-    if not interacted or not settings.get('is_listening', False): # Dinleme kapalıysa liste boştur (çünkü /off sıfırlar)
+    if not interacted or not settings.get('is_listening', False):
         await update.message.reply_text(get_text(context, "list_empty"))
         return
 
-    # Kullanıcıları zamana göre sırala (en yeniden en eskiye)
     try:
         sorted_users = sorted(
             interacted.items(),
@@ -385,11 +347,11 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
     except Exception as sort_e:
          logger.error(f"/list: Etkileşim listesi sıralama hatası: {sort_e}")
-         sorted_users = list(interacted.items()) # Sıralama başarısız olursa olduğu gibi al
+         sorted_users = list(interacted.items())
 
     list_text = get_text(context, "list_title") + "\n\n"
     count = 0
-    max_list_items = 30 # Liste uzunluğunu biraz artıralım
+    max_list_items = 30
 
     for user_id_str, data in sorted_users:
         if count >= max_list_items:
@@ -397,33 +359,28 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
              break
 
         name = data.get('name', f'ID:{user_id_str}')
-        link = data.get('link', None) # Gruplar/kanallar için mesaj linki
+        link = data.get('link', None)
         interaction_type = data.get('type', 'unknown')
-        # timestamp_str = data.get('timestamp', 'Bilinmiyor') # Zamanı göstermeye gerek yok
 
         try:
-            user_id_int = int(user_id_str) # Link için int lazım
-            # Özel mesajlarda kullanıcı profiline link verelim
+            user_id_int = int(user_id_str)
             if interaction_type == 'dm':
                  user_link = f"tg://user?id={user_id_int}"
                  list_text += f"• <a href=\"{user_link}\">{name}</a> (Özel Mesaj)\n"
-            # Grup mention/reply için mesaj linkini kullanalım (varsa)
             elif link:
                  list_text += f"• <a href=\"{link}\">{name}</a> ({interaction_type})\n"
-            # Link yoksa (eski data veya hata?) sadece ismi yazalım
             else:
                  list_text += f"• {name} ({interaction_type} - ID: {user_id_int})\n"
             count += 1
         except ValueError:
              logger.warning(f"/list: Geçersiz kullanıcı ID'si string'i: {user_id_str}")
-             list_text += f"• {name} (ID: {user_id_str}, Tip: {interaction_type})\n" # ID'yi göster
+             list_text += f"• {name} (ID: {user_id_str}, Tip: {interaction_type})\n"
              count += 1
         except Exception as format_e:
              logger.error(f"/list: Liste formatlama hatası for {user_id_str}: {format_e}")
              list_text += f"• {name} (formatlama hatası)\n"
              count += 1
 
-    # Mesajı gönder
     try:
         await update.message.reply_text(
             list_text,
@@ -435,15 +392,17 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
          await update.message.reply_text(f"❌ Liste gönderilirken hata oluştu: {e}")
 
 async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/ping komutu - Botların durumunu kontrol eder."""
-    if update.effective_user.id != ADMIN_ID: return
+    user_id = update.effective_user.id
+    logger.info(f"Received command '/ping' from user ID {user_id}. Comparing with ADMIN_ID {ADMIN_ID}.")
+    if user_id != ADMIN_ID:
+        logger.warning(f"Unauthorized access attempt for /ping by user ID {user_id}.")
+        return
 
-    # Userbot durumunu kontrol et
-    userbot_status_key = "userbot_disconnected" # Varsayılan
+    userbot_status_key = "userbot_disconnected"
     userbot_status_text = ""
     if user_bot_client and user_bot_client.is_connected:
         try:
-            await user_bot_client.get_me() # Küçük bir API çağrısı
+            await user_bot_client.get_me()
             userbot_status_key = "userbot_connected"
         except Exception as e:
             logger.warning(f"Ping sırasında userbot erişim hatası: {e}")
@@ -457,20 +416,20 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         get_text(context, "ping_reply", userbot_status=userbot_status_text)
     )
 
-# --- PTB Inline Button ve Metin Giriş İşleyicileri ---
-
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Inline butonlara basıldığında çalışır (Ayarlar menüsü için)."""
     query = update.callback_query
     await query.answer()
-    if query.from_user.id != ADMIN_ID: return
+    user_id = query.from_user.id
+    logger.info(f"Received button callback '{query.data}' from user ID {user_id}. Comparing with ADMIN_ID {ADMIN_ID}.")
+    if user_id != ADMIN_ID:
+        logger.warning(f"Unauthorized button callback '{query.data}' attempt by user ID {user_id}.")
+        return
 
     callback_data = query.data
     settings = get_current_settings(context)
 
-    logger.info(f"Buton geri çağrısı alındı: {callback_data}")
+    logger.info(f"Button callback işleniyor: {callback_data}")
 
-    # --- Ana Ayar Menüsü Butonları ---
     if callback_data == 'select_language':
         keyboard = [
             [
@@ -488,19 +447,17 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     elif callback_data == 'prompt_settings':
         await prompt_settings_menu(update, context)
 
-    # --- Dil Seçim Butonları ---
     elif callback_data.startswith('lang_'):
         lang_code = callback_data.split('_')[1]
         if lang_code in localization:
             settings['language'] = lang_code
             await save_settings(context, settings)
             logger.info(f"Dil değiştirildi: {lang_code}")
-            # Ayarlar menüsünü yeni dilde göster
             keyboard = _generate_main_menu_keyboard(context)
             reply_markup = InlineKeyboardMarkup(keyboard)
             try:
                 await query.edit_message_text(
-                    get_text(context, "settings_menu_title"), # Yeni dilde başlık
+                    get_text(context, "settings_menu_title"),
                     reply_markup=reply_markup
                 )
             except TelegramError as e: logger.error(f"Dil değiştirildikten sonra menü düzenlenirken hata: {e}")
@@ -508,7 +465,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             logger.warning(f"Geçersiz dil kodu: {lang_code}")
             await query.answer("Geçersiz dil!", show_alert=True)
 
-    # --- Prompt Ayar Butonları ---
     elif callback_data == 'prompt_set_age':
         context.user_data['next_action'] = 'set_age'
         try: await query.edit_message_text(get_text(context, "enter_age"))
@@ -525,7 +481,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         settings['prompt_config'] = prompt_config
         await save_settings(context, settings)
         await query.answer(get_text(context, "setting_updated"))
-        await prompt_settings_menu(update, context) # Menüyü güncelle
+        await prompt_settings_menu(update, context)
 
     elif callback_data == 'prompt_toggle_jokes':
         prompt_config = settings.get('prompt_config', DEFAULT_SETTINGS['prompt_config'])
@@ -548,46 +504,45 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         try: await query.edit_message_text(get_text(context, "enter_suffix"))
         except TelegramError as e: logger.error(f"Suffix isteme mesajı düzenlenirken hata: {e}")
 
-    # --- Geri Butonları ---
     elif callback_data == 'main_menu':
-        context.user_data.pop('next_action', None) # Bekleyen eylemi iptal et
-        # Ana ayarlar menüsünü göster
+        context.user_data.pop('next_action', None)
         keyboard = _generate_main_menu_keyboard(context)
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
             await query.edit_message_text(
-                get_text(context, "settings_menu_title"), # Sadece başlığı gösterelim
+                get_text(context, "settings_menu_title"),
                 reply_markup=reply_markup
             )
         except TelegramError as e:
-            logger.error(f"Ana menüye geri dönerken hata: {e}")
-
+            if "Message is not modified" not in str(e):
+                 logger.error(f"Ana menüye geri dönerken hata: {e}")
 
 async def prompt_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Prompt ayarları menüsünü gösterir/düzenler."""
     query = update.callback_query
-    if not query or query.from_user.id != ADMIN_ID: return
+    if not query: return # Should not happen if called from button_callback
+    # Admin check already done in button_callback
 
     keyboard = _generate_prompt_settings_keyboard(context)
     reply_markup = InlineKeyboardMarkup(keyboard)
     try:
         await query.edit_message_text(get_text(context, "prompt_menu_title"), reply_markup=reply_markup)
     except TelegramError as e:
-        logger.error(f"Prompt menüsü düzenlenirken hata: {e}")
         if "Message is not modified" not in str(e):
-             # Hata mesajı göndermek yerine loglamak yeterli olabilir
-             pass
+            logger.error(f"Prompt menüsü düzenlenirken hata: {e}")
 
-# handle_text_input öncekiyle aynı kalabilir, sadece menü gösterme kısmı farklı
 async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Prompt ayarları için metin girişlerini işler."""
-    if update.effective_user.id != ADMIN_ID: return
+    user_id = update.effective_user.id
+    logger.info(f"Received text input from user ID {user_id}. Checking if admin and if action pending.")
+    if user_id != ADMIN_ID:
+        logger.warning(f"Unauthorized text input from user ID {user_id}. Text: {update.message.text}")
+        return
 
     action = context.user_data.pop('next_action', None)
     if not action:
-        logger.debug(f"Admin'den beklenmeyen metin mesajı: {update.message.text}")
+        logger.debug(f"Admin'den ({user_id}) beklenen bir eylem olmadan metin mesajı alındı: {update.message.text}")
         return
 
+    logger.info(f"Processing pending action '{action}' for admin {user_id} with text: {update.message.text}")
     text = update.message.text.strip()
     settings = get_current_settings(context)
     prompt_config = settings.get('prompt_config', DEFAULT_SETTINGS['prompt_config'])
@@ -630,20 +585,14 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text(get_text(context, "suffix_updated", suffix=suffix if suffix else "[Boş]"))
         should_show_menu_again = True
 
-    # Ayar yapıldıysa menüyü yeni mesajla tekrar göster
     if should_show_menu_again:
          keyboard = _generate_prompt_settings_keyboard(context)
          reply_markup = InlineKeyboardMarkup(keyboard)
-         # Kullanıcının girdiği mesajın hemen altına gönderelim
          await update.message.reply_text(get_text(context, "prompt_menu_title"), reply_markup=reply_markup)
 
+user_bot_client: Client = None
+ptb_app: Application = None
 
-# --- Kullanıcı Botu (Pyrogram) İşleyicileri ---
-
-user_bot_client: Client = None # Global Pyrogram client
-ptb_app: Application = None # Global PTB application
-
-# Gemini AI istemcisi (öncekiyle aynı)
 try:
     genai.configure(api_key=AI_API_KEY)
     ai_model_instance = genai.GenerativeModel(DEFAULT_SETTINGS['ai_model'])
@@ -660,7 +609,6 @@ except Exception as e:
     ai_model_instance = None
     safety_settings = None
 
-# Ayarları almak/kaydetmek için global ptb_app'ı kullanacağız
 async def get_pyrogram_settings() -> dict:
     if not ptb_app:
         logger.error("PTB Application Pyrogram ayarları için kullanılamıyor.")
@@ -678,34 +626,23 @@ async def save_pyrogram_settings(settings: dict):
 async def notify_admin(client: Client, message: str):
     if ADMIN_ID:
         try:
-            # Mesajı kontrol botu üzerinden gönderelim, userbot yerine
             if ptb_app:
                  await ptb_app.bot.send_message(ADMIN_ID, message[:4096])
-            # Userbot hala bağlıysa oradan da deneyebiliriz ama PTB daha güvenilir
-            # elif client and client.is_connected:
-            #      await client.send_message(ADMIN_ID, message[:4096])
         except Exception as e:
             logger.error(f"Admin'e bildirim gönderilemedi ({ADMIN_ID}): {e}")
 
-# Ana Mesaj İşleyici (Pyrogram)
-# Filtreler aynı kalıyor: Özel mesajlar, mentionlar, yanıtlar (kendi mesajlarımız ve servis mesajları hariç)
 @Client.on_message(filters.private | filters.mentioned | filters.reply & ~filters.me & ~filters.service, group=1)
 async def handle_user_message(client: Client, message: Message):
-    """Gelen ilgili mesajları işler (sadece dinleme modu aktifse)."""
-    # Pyrogram client hazır mı?
     if not client or not client.is_connected:
         logger.warning("Pyrogram client hazır değil, mesaj işlenemiyor.")
         return
 
-    # Hata Yakalama Bloğu
+    settings = {} # Hata durumunda tanımlı olması için
     try:
-        # 1. Ayarları al ve Dinleme Modunu Kontrol Et (EN ÖNEMLİ KISIM)
         settings = await get_pyrogram_settings()
         if not settings.get('is_listening', False):
-            # logger.debug("Dinleme modu kapalı, mesaj yoksayılıyor.")
-            return # /on komutu verilene kadar hiçbir şey yapma
+            return
 
-        # 2. Gerekli bilgileri al (öncekiyle aynı)
         my_id = client.me.id
         sender = message.from_user or message.sender_chat
         if not sender:
@@ -719,18 +656,16 @@ async def handle_user_message(client: Client, message: Message):
         message_text = message.text or message.caption or ""
         message_link = message.link
 
-        # 3. Etkileşim türünü belirle (öncekiyle aynı)
         interaction_type = "unknown"
         if message.chat.type == ChatType.PRIVATE: interaction_type = "dm"
         elif message.mentioned: interaction_type = "mention"
         elif message.reply_to_message and message.reply_to_message.from_user_id == my_id: interaction_type = "reply"
         else:
-             logger.warning(f"Beklenmeyen mesaj türü algılandı (dinleme açıkken): chat_id={chat_id}, msg_id={message_id}")
+             logger.warning(f"Beklenmeyen mesaj türü algılandı (dinleme açıkken): chat_id={chat_id}, msg_id={message_id}, sender_id={sender_id}")
              return
 
         logger.info(f"İşlenecek mesaj ({interaction_type}): {sender_name} ({sender_id}) -> {message_text[:50] if message_text else '[Metin/Başlık Yok]'} (Link: {message_link})")
 
-        # 4. Kullanıcıyı etkileşim listesine ekle/güncelle (öncekiyle aynı)
         now_utc = datetime.now(pytz.utc)
         interacted_users = settings.get('interacted_users', {})
         interacted_users[str(sender_id)] = {
@@ -740,9 +675,8 @@ async def handle_user_message(client: Client, message: Message):
             "timestamp": now_utc.isoformat()
         }
         settings['interacted_users'] = interacted_users
-        await save_pyrogram_settings(settings) # Ayarları (listeyi) kaydet
+        await save_pyrogram_settings(settings)
 
-        # 5. AI Yanıtı Oluşturma (öncekiyle aynı)
         if not ai_model_instance:
              logger.error("AI modeli başlatılmamış, yanıt verilemiyor.")
              await notify_admin(client, "❌ Hata: AI modeli başlatılamadığı için AFK yanıtı verilemedi.")
@@ -750,10 +684,10 @@ async def handle_user_message(client: Client, message: Message):
         prompt_config = settings.get('prompt_config', DEFAULT_SETTINGS['prompt_config'])
         lang = settings.get('language', 'tr')
         full_prompt = generate_full_prompt(prompt_config, lang, sender_name, interaction_type, message_text)
-        logger.debug(f"Oluşturulan AI Prompt'u:\n---\n{full_prompt}\n---")
+        # logger.debug(f"Oluşturulan AI Prompt'u:\n---\n{full_prompt}\n---")
         ai_content = full_prompt
 
-        logger.info(f"AI ({settings['ai_model']}) modeline istek gönderiliyor...")
+        logger.info(f"AI ({settings.get('ai_model', 'bilinmiyor')}) modeline istek gönderiliyor...")
         response = await ai_model_instance.generate_content_async(
             ai_content,
             safety_settings=safety_settings
@@ -761,7 +695,6 @@ async def handle_user_message(client: Client, message: Message):
         ai_reply_text = response.text
         logger.info(f"AI yanıtı alındı: {ai_reply_text[:100]}...")
 
-        # 6. Yanıtı Gönderme (öncekiyle aynı)
         suffix = prompt_config.get('custom_suffix', "")
         final_reply = ai_reply_text
         if suffix: final_reply += f"\n\n{suffix}"
@@ -773,44 +706,36 @@ async def handle_user_message(client: Client, message: Message):
         )
         logger.info(f"Yanıt gönderildi: chat_id={chat_id}, reply_to={message_id}")
 
-    # Hata Yakalama (öncekiyle aynı, admin bildirimi PTB üzerinden gider)
     except (PeerIdInvalid, ChannelInvalid, ChannelPrivate) as e:
         peer_id_info = f"Chat ID: {message.chat.id}" if message else "Bilinmiyor"
         logger.error(f"Pyrogram Peer/Channel Hatası ({peer_id_info}): {e}. Bu sohbetten gelen güncellemeler işlenemiyor.", exc_info=False)
-        # await notify_admin(client, get_text(None, "pyrogram_handler_error", lang='tr', peer_id=peer_id_info, error=str(e))) # Çok fazla bildirim olabilir
     except (UserIsBlocked, UserNotParticipant) as e:
         logger.warning(f"Mesaj gönderilemedi (kullanıcı engelledi veya grupta değil): {e} (Chat ID: {message.chat.id if message else 'N/A'})")
     except GoogleAPIError as e:
         logger.error(f"Google AI API Hatası: {e}", exc_info=True)
         error_text = get_text(None, "error_ai", lang=settings.get('language', 'tr'), error=str(e))
-        await notify_admin(client, error_text) # client yerine ptb_app kullanıldı notify_admin içinde
+        await notify_admin(client, error_text)
     except Exception as e:
         logger.error(f"Mesaj işlenirken veya gönderilirken beklenmedik hata: {e}", exc_info=True)
         error_trace = traceback.format_exc()
+        chat_id_info = message.chat.id if message else 'N/A'
         await notify_admin(client, get_text(None, "admin_error_notification", lang='tr',
-                                             chat_id=message.chat.id if message else 'N/A',
+                                             chat_id=chat_id_info,
                                              error=str(e), trace=error_trace[-1000:]))
-
-# Pyrogram komut işleyicisi kaldırıldı.
-
-# --- Ana Çalıştırma Fonksiyonu ---
 
 async def main():
     global user_bot_client, ptb_app
 
-    # 1. Persistence
     logger.info(f"Persistence dosyası kullanılıyor: {PERSISTENCE_FILE}")
     persistence = PicklePersistence(filepath=PERSISTENCE_FILE)
 
-    # 2. Kontrol Botu (PTB) Application Oluşturma
     logger.info("Kontrol botu (PTB) Application oluşturuluyor...")
     ptb_application = Application.builder() \
         .token(TG_BOT_TOKEN) \
         .persistence(persistence) \
         .build()
-    ptb_app = ptb_application # Global değişkene ata
+    ptb_app = ptb_application
 
-    # PTB İşleyicilerini Ekleme (Sadece Admin için)
     admin_filter = ptb_filters.User(ADMIN_ID)
     ptb_application.add_handler(CommandHandler("start", start_command, filters=admin_filter))
     ptb_application.add_handler(CommandHandler("settings", settings_command, filters=admin_filter))
@@ -818,11 +743,10 @@ async def main():
     ptb_application.add_handler(CommandHandler("off", off_command, filters=admin_filter))
     ptb_application.add_handler(CommandHandler("list", list_command, filters=admin_filter))
     ptb_application.add_handler(CommandHandler("ping", ping_command, filters=admin_filter))
-    ptb_application.add_handler(CallbackQueryHandler(button_callback)) # Callback içinde admin kontrolü var
+    ptb_application.add_handler(CallbackQueryHandler(button_callback)) # İçinde admin kontrolü var
     ptb_application.add_handler(MessageHandler(ptb_filters.TEXT & ~ptb_filters.COMMAND & admin_filter, handle_text_input))
     logger.info("PTB handler'ları eklendi.")
 
-    # 3. Pyrogram İstemcisini Oluşturma
     logger.info("Pyrogram kullanıcı botu istemcisi oluşturuluyor...")
     user_bot_client = Client(
         "my_afk_userbot",
@@ -830,10 +754,8 @@ async def main():
         api_hash=TG_API_HASH,
         session_string=TG_STRING_SESSION
     )
-    # Pyrogram handler'ları decorator ile eklendi.
     logger.info("Pyrogram handler'ları tanımlandı.")
 
-    # 4. İki Botu Aynı Anda Çalıştırma
     try:
         logger.info("Kontrol botu (PTB) başlatılıyor (initialize)...")
         await ptb_application.initialize()
@@ -846,8 +768,7 @@ async def main():
         logger.info("✅ Kontrol botu başarıyla başlatıldı.")
         logger.info("Botlar çalışıyor... Userbot dinlemesi için /on komutunu kullanın. Kapatmak için CTRL+C.")
 
-        # Sürekli çalışmayı sağla
-        await idle() # PTB arka planda çalışır, Pyrogram idle() ile ana thread'i tutar
+        await idle()
 
     except ConnectionError as e:
          logger.critical(f"❌ Pyrogram bağlanamadı! String Session geçersiz veya ağ sorunu: {e}", exc_info=True)
@@ -858,7 +779,6 @@ async def main():
     except Exception as e:
         logger.critical(f"❌ Ana çalıştırma döngüsünde kritik hata: {e}", exc_info=True)
     finally:
-        # Graceful shutdown (öncekiyle aynı)
         logger.info("Botlar durduruluyor...")
         tasks = []
         if user_bot_client and user_bot_client.is_connected:
