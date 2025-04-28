@@ -1,28 +1,28 @@
 {
-  "name": "Telegram Geçmiş Analiz Botu",
-  "description": "Pyrogram ve Gemini AI kullanarak Telegram sohbet geçmişlerini analiz eden ve özetleyen bir bot.",
+  "name": "Telegram AFK Yanıt Botu",
+  "description": "Telegram hesabınızdan DM, mention ve yanıtlara otomatik olarak AI destekli yanıtlar veren ve ayarları bir kontrol botu ile yapılan bot.",
   "repository": "https://github.com/xxxx/xxxx",
-  "logo": "https://avatars.githubusercontent.com/u/1459478",
-  "keywords": ["telegram", "pyrogram", "bot", "ai", "gemini", "heroku", "python"],
+  "logo": "https://img.icons8.com/?size=100&id=61164&format=png&color=000000", // Robot ikonu
+  "keywords": ["telegram", "pyrogram", "bot", "ai", "gemini", "heroku", "python", "afk"],
   "stack": "heroku-22",
   "env": {
     "ADMIN_ID": {
-      "description": "Botun komutlarını kullanabilecek Telegram kullanıcısının unique ID'si.",
+      "description": "Botu kontrol edecek ve ayarlarını yapacak sizin Telegram Kullanıcı ID'niz.",
       "value": "",
       "required": true
     },
     "TG_API_ID": {
-      "description": "my.telegram.org adresinden alınan API ID.",
+      "description": "my.telegram.org adresinden alınan API ID (Userbot için).",
       "value": "",
       "required": true
     },
     "TG_API_HASH": {
-      "description": "my.telegram.org adresinden alınan API Hash.",
+      "description": "my.telegram.org adresinden alınan API Hash (Userbot için).",
       "value": "",
       "required": true
     },
     "TG_BOT_TOKEN": {
-      "description": "Telegram BotFather'dan alınan bot token'ı.",
+      "description": "Telegram BotFather'dan alınan KONTROL botunun token'ı.",
       "value": "",
       "required": true
     },
@@ -32,10 +32,20 @@
       "required": true
     },
     "TG_STRING_SESSION": {
-      "description": "Pyrogram kullanıcı botu için oluşturulan String Session. Bu olmadan kullanıcı botu çalışmaz.",
+      "description": "Pyrogram kullanıcı botu (userbot) için oluşturulan String Session. Yanıtları sizin hesabınızdan göndermek için zorunludur.",
       "value": "",
       "required": true
-    }
+    },
+    "PERSISTENCE_FILE": {
+        "description": "(İsteğe bağlı) Kontrol botunun ayarları ve durumunu saklayacağı dosya adı.",
+        "value": "bot_persistence.pickle",
+        "required": false
+    },
+     "SETTINGS_FILE": {
+        "description": "(İsteğe bağlı) Ayarların JSON olarak yedekleneceği dosya adı.",
+        "value": "settings.json",
+        "required": false
+     }
   },
   "buildpacks": [
     {
