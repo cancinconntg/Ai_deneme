@@ -1,6 +1,7 @@
 pyrogram[TgCrypto]>=2.0.106
-python-telegram-bot>=21.0.1
+python-telegram-bot[persistence]>=21.0.1
 google-generativeai>=0.5.4
+httpx>=0.24.1,<0.28.0
+pytz>=2024.1
 markdown>=3.6
 bleach>=6.1.0
-httpx>=0.24.1,<0.28.0 # Pyrogram ve PTB ile uyumluluk için sürüm aralığı
